@@ -25,13 +25,11 @@ typedef int tid_t;
 #define PRI_MAX 63                      /* Highest priority. */
 
 /* A kernel thread or user process.
-
    Each thread structure is stored in its own 4 kB page.  The
    thread structure itself sits at the very bottom of the page
    (at offset 0).  The rest of the page is reserved for the
    thread's kernel stack, which grows downward from the top of
    the page (at offset 4 kB).  Here's an illustration:
-
         4 kB +---------------------------------+
              |          kernel stack           |
              |                |                |
@@ -53,22 +51,18 @@ typedef int tid_t;
              |               name              |
              |              status             |
         0 kB +---------------------------------+
-
    The upshot of this is twofold:
-
       1. First, `struct thread' must not be allowed to grow too
          big.  If it does, then there will not be enough room for
          the kernel stack.  Our base `struct thread' is only a
          few bytes in size.  It probably should stay well under 1
          kB.
-
       2. Second, kernel stacks must not be allowed to grow too
          large.  If a stack overflows, it will corrupt the thread
          state.  Thus, kernel functions should not allocate large
          structures or arrays as non-static local variables.  Use
          dynamic allocation with malloc() or palloc_get_page()
          instead.
-
    The first symptom of either of these problems will probably be
    an assertion failure in thread_current(), which checks that
    the `magic' member of the running thread's `struct thread' is
@@ -100,6 +94,16 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+
+    int64_t wakeup_tick;
+
+    int init_priority;
+    struct lock *wait_on_lock;  // 해당 thread가 대기하고있는 lock 자료구조의 주소 저장
+    struct list donations;  // multiple donation 위해 자기한테 donate한 thread들 리스트 형태로
+    struct list_elem donation_elem;  // list_donations와 관련
+
+    int nice; 
+    int recent_cpu;
   };
 
 /* If false (default), use round-robin scheduler.
@@ -137,5 +141,21 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+///////////////
+
+void thread_sleep(int64_t ticks);
+void thread_awake(int64_t wakeup_tick);
+int64_t get_next_tick_to_awake(void);
+void update_next_tick_to_awake(int64_t ticks);
+
+bool compare_priority(const struct list_elem *e1, const struct list_elem *e2, void *aux UNUSED);
+bool compare_donation_priority(const struct list_elem *e1, const struct list_elem *e2, void *aux );
+
+void priority_issue(void);
+
+void donate_priority(void);
+void remove_with_lock(struct lock *removal_lock);
+void refresh_priority(void);
 
 #endif /* threads/thread.h */
