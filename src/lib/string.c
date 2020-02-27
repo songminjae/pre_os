@@ -245,6 +245,8 @@ strtok_r (char *s, const char *delimiters, char **save_ptr)
     s = *save_ptr;
   ASSERT (s != NULL);
 
+  //printf("siballahfkdq%s\n", s);
+
   /* Skip any DELIMITERS at our current position. */
   while (strchr (delimiters, *s) != NULL) 
     {

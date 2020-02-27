@@ -26,22 +26,33 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name) 
+process_execute (const char *file_name)//process 생성함수 부르고 그 해당하는 tid 리턴 //process == thread 
 {
   char *fn_copy;
   tid_t tid;
+
+  //main
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
+  strlcpy (fn_copy, file_name, PGSIZE);  //copies from <file_name -> fn_copy>
+
+  //char *first_file_name;
+  //char *save_ptr;
+  char d[256];
+  //first_file_name = strtok_r(file_name, " ", &save_ptr);
+
+  parse_filename(file_name, d);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (d, PRI_DEFAULT, start_process, fn_copy);  //// 현제 문제점: file_name 전체가 thread_create로 전달되고 있음
+  //printf("\nhihihihihi\n");
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+  //printf("\nhihihihihi\n");
   return tid;
 }
 
@@ -53,18 +64,82 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
+  char d[256];
+  char **argv;
+  //int argc = 0;
+  char *token, *save_ptr;
+  //char using_file_name[256];
+  //char using_file_name2[256];
+  char using_file_name3[256];
+  //int using_argc = 0;
+
+  parse_filename(file_name, d);
+  //strlcpy(using_file_name, file_name, strlen(file_name) + 1); 
+  //strlcpy(using_file_name2, file_name, strlen(file_name) + 1); 
+  strlcpy(using_file_name3, file_name, strlen(file_name) + 1); 
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
 
-  /* If load failed, quit. */
+  success = load (d, &if_.eip, &if_.esp);
+/*
+  if(success){
+    for (token = strtok_r(using_file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)){
+      argc = argc+1;
+    }
+
+    argv = (char **)malloc(sizeof(char *) * argc);
+
+    for (token = strtok_r(using_file_name2, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)){
+      int token_len = strlen(token);
+      for (int i = 0; i < token_len; i++){
+        argv[using_argc][i] = token[i];
+      }
+      using_argc = using_argc + 1;
+    }
+
+    argument_stack(argv, argc, &if_.esp, using_file_name3);
+
+    free(argv);
+    hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
+  }
+*/
+  if(success){
+    argument_stack(&if_.esp, using_file_name3);
+  }
+
+  printf("tlqkfdhroqhfq%s\n", file_name);
+  /* If load failed, quit. */ //************************************************************여기서 부터 file_name 바뀐다
   palloc_free_page (file_name);
+  //printf("\nhihihihihi\n");
   if (!success) 
     thread_exit ();
+
+  //strlcpy(using_file_name, file_name, strlen(file_name) + 1);       //////////////////////////개새끼 발견!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+/*
+  for (token = strtok_r(using_file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)){
+    argc = argc+1;
+  }
+
+  argv = (char **)malloc(sizeof(char *) * argc);
+
+  for (token = strtok_r(using_file_name2, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)){
+    int token_len = strlen(token);
+    for (int i = 0; i < token_len; i++){
+      argv[using_argc][i] = token[i];
+    }
+    using_argc = using_argc + 1;
+  }
+
+  argument_stack(argv, argc, &if_.esp, using_file_name3);
+
+  free(argv);
+  printf("tlqkffhaemfdk\n");
+*/
+  
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -72,6 +147,10 @@ start_process (void *file_name_)
      arguments on the stack in the form of a `struct intr_frame',
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
+  //printf("tlqkffhaemfdk\n");
+
+  hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
+
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
   NOT_REACHED ();
 }
@@ -111,8 +190,11 @@ process_exit (void)
          directory, or our active page directory will be one
          that's been freed (and cleared). */
       cur->pagedir = NULL;
+      //printf("\nhihihihihi\n");
       pagedir_activate (NULL);
-      pagedir_destroy (pd);
+      //printf("\nhihihihihi\n");
+      pagedir_destroy (pd); //****************************************
+      //printf("\nhihihihihi\n");
     }
 }
 
@@ -300,16 +382,13 @@ load (const char *file_name, void (**eip) (void), void **esp)
           break;
         }
     }
-
   /* Set up stack. */
   if (!setup_stack (esp))
     goto done;
-
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
   success = true;
-
  done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
@@ -386,7 +465,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
-
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -438,6 +516,7 @@ setup_stack (void **esp)
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
         *esp = PHYS_BASE;
+        //*esp = PHYS_BASE - 12;
       else
         palloc_free_page (kpage);
     }
@@ -462,4 +541,126 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+
+void parse_filename(char *src, char *dest) {
+  int i;
+  strlcpy(dest, src, strlen(src) + 1);
+  for (i=0; dest[i]!='\0' && dest[i] != ' '; i++);
+  dest[i] = '\0'; 
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/*
+void argument_stack(char **parse, int count, void **esp, char *file_name){ // esp = 스택 포인터 가리키는 주소 //스택에 파싱된 토큰 저장 
+  int i;
+  int total_len = 0;
+  char *token, save_ptr;
+
+  i = 0;
+
+  for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)){
+    parse[i] = token;
+    i++;
+  }
+
+  //argv[][]...
+  for (i = count - 1; i>-1; i--){
+    int len = strlen(parse[i]);
+    *esp -= len + 1; 
+    total_len += len + 1;
+
+    strlcpy(*esp, parse[i], len + 1);
+    parse[i] = *esp;
+  }
+  
+  //align
+  *esp -= 4 - (total_len % 4);
+
+  //argv[count]
+  *esp -= 4;
+  **(uint32_t **)esp = 0;
+
+  //argv[] *************************************************************************************
+  for (i = count -1; i>=0; i--){
+    *esp -= 4;
+    **(uint32_t **)esp = parse[i];
+  }
+
+  //argv
+  *esp -= 4;
+  **(uint32_t **)esp = *esp + 4;
+
+  //push argc(count)
+  *esp -= 4;
+  **(uint32_t **)esp = count;
+  //push fake address
+  *esp -= 4;
+  **(uint32_t **)esp = 0;
+}
+*/
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void argument_stack(void **esp, char *file_name){
+  char **parse;
+  int count = 0;
+  char file_name_copy[16];
+  char *token, *save_ptr;
+  int i = 0;
+  int len;
+  int total_len = 0;
+
+  strlcpy(file_name_copy, file_name, strlen(file_name) + 1);
+  for (token = strtok_r(file_name_copy, " ", &save_ptr); token != NULL ; token = strtok_r(NULL, " ", &save_ptr)){
+    count += 1;
+  }
+
+  parse = (char **)malloc(sizeof(char *) * count);
+
+  strlcpy(file_name_copy, file_name, strlen(file_name) + 1);
+
+  //printf("fuck%s\n", file_name_copy);
+
+  for (token = strtok_r(file_name_copy, " ", &save_ptr); token != NULL ; token = strtok_r(NULL, " ", &save_ptr)){
+    parse[i] = token;
+
+    printf("heyhey%s\n", token);
+    i += 1;
+  }
+
+  //argv[][]...
+  for (i = count -1; i>-1; i--){
+    len = strlen(parse[i]);
+    *esp -= len + 1;
+    total_len += len + 1;
+    strlcpy(*esp, parse[i], len + 1);
+    parse[i] = *esp;
+  }
+
+  //align
+  *esp -= 4 - (total_len % 4);
+
+  //argv[count]
+  *esp -= 4;
+  **(uint32_t **)esp = 0;
+
+  //argv[] *************************************************************************************
+  for (i = count -1; i>=0; i--){
+    *esp -= 4;
+    **(uint32_t **)esp = parse[i];
+  }
+
+  //argv
+  *esp -= 4;
+  **(uint32_t **)esp = *esp + 4;
+
+  //push argc(count)
+  *esp -= 4;
+  **(uint32_t **)esp = count;
+  //push fake address
+  *esp -= 4;
+  **(uint32_t **)esp = 0;
+
+
+  free(parse);
 }
