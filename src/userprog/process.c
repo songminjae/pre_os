@@ -21,6 +21,9 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
+void argument_stack(void **esp, char *file_name);
+void parse_filename(const char *src, char *dest);
+
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -30,6 +33,9 @@ process_execute (const char *file_name)//process 생성함수 부르고 그 해�
 {
   char *fn_copy;
   tid_t tid;
+
+  struct list_elem *e;
+  struct thread *t;
 
   //main
 
@@ -47,12 +53,23 @@ process_execute (const char *file_name)//process 생성함수 부르고 그 해�
 
   parse_filename(file_name, d);
 
+  if(filesys_open(d)==NULL){
+    return -1;
+  }
+
+
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (d, PRI_DEFAULT, start_process, fn_copy);  //// 현제 문제점: file_name 전체가 thread_create로 전달되고 있음
-  //printf("\nhihihihihi\n");
+  sema_down(&(thread_current()->load_lock));
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
-  //printf("\nhihihihihi\n");
+
+  for (e = list_begin(&thread_current()->children); e != list_end(&thread_current()->children); e = list_next(e)){
+    t = list_entry(e, struct thread, child_elem);
+    if(t->is_loaded == false){
+      return process_wait(tid);
+    }
+  }
   return tid;
 }
 
@@ -65,9 +82,9 @@ start_process (void *file_name_)
   struct intr_frame if_;
   bool success;
   char d[256];
-  char **argv;
+  //char **argv;
   //int argc = 0;
-  char *token, *save_ptr;
+  //char *token, *save_ptr;
   //char using_file_name[256];
   //char using_file_name2[256];
   char using_file_name3[256];
@@ -107,17 +124,20 @@ start_process (void *file_name_)
     hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
   }
 */
-  if(success){
-    argument_stack(&if_.esp, using_file_name3);
-  }
-
-  printf("tlqkfdhroqhfq%s\n", file_name);
+  sema_up(&thread_current()->parent->load_lock);
   /* If load failed, quit. */ //************************************************************여기서 부터 file_name 바뀐다
   palloc_free_page (file_name);
-  //printf("\nhihihihihi\n");
-  if (!success) 
-    thread_exit ();
 
+  if (!success){ 
+
+    //thread_exit ();
+    exit(-1);
+  }
+
+  if(success){
+    thread_current()->is_loaded = true;
+    argument_stack(&if_.esp, using_file_name3);
+  }
   //strlcpy(using_file_name, file_name, strlen(file_name) + 1);       //////////////////////////개새끼 발견!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 /*
   for (token = strtok_r(using_file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)){
@@ -149,7 +169,7 @@ start_process (void *file_name_)
      and jump to it. */
   //printf("tlqkffhaemfdk\n");
 
-  hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
+  //hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
 
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
   NOT_REACHED ();
@@ -165,8 +185,22 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
+  struct thread *cur = thread_current();
+  struct list_elem *e;
+  int exit_status;
+
+  for (e = list_begin(&(cur->children)) ; e != list_end(&(cur->children)); e = list_next(e)){
+    struct thread *t = list_entry(e, struct thread, child_elem);
+    if(child_tid == t->tid){
+      sema_down(&(t->child_lock));
+      exit_status = t->exit_status;
+      list_remove(&(t->child_elem));
+      sema_up(&(t->mem_lock));
+      return exit_status;
+    }
+  }
   return -1;
 }
 
@@ -190,12 +224,11 @@ process_exit (void)
          directory, or our active page directory will be one
          that's been freed (and cleared). */
       cur->pagedir = NULL;
-      //printf("\nhihihihihi\n");
       pagedir_activate (NULL);
-      //printf("\nhihihihihi\n");
-      pagedir_destroy (pd); //****************************************
-      //printf("\nhihihihihi\n");
+      pagedir_destroy (pd);
     }
+  sema_up(&(cur->child_lock));
+  sema_down(&(cur->mem_lock));
 }
 
 /* Sets up the CPU for running user code in the current
@@ -296,6 +329,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;
+
+  //printf("fuck: %d\n", strlen(file_name));
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
@@ -439,6 +474,8 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
      assertions in memcpy(), etc. */
   if (phdr->p_vaddr < PGSIZE)
     return false;
+  //if (phdr->p_offset < PGSIZE)
+  //  return false;
 
   /* It's okay. */
   return true;
@@ -544,7 +581,7 @@ install_page (void *upage, void *kpage, bool writable)
 }
 
 
-void parse_filename(char *src, char *dest) {
+void parse_filename(const char *src, char *dest) {
   int i;
   strlcpy(dest, src, strlen(src) + 1);
   for (i=0; dest[i]!='\0' && dest[i] != ' '; i++);
@@ -615,7 +652,9 @@ void argument_stack(void **esp, char *file_name){
     count += 1;
   }
 
-  parse = (char **)malloc(sizeof(char *) * count);
+  //parse = (char **)malloc(sizeof(char *) * count);
+  parse = malloc(sizeof(char *) * count);
+
 
   strlcpy(file_name_copy, file_name, strlen(file_name) + 1);
 
@@ -624,7 +663,7 @@ void argument_stack(void **esp, char *file_name){
   for (token = strtok_r(file_name_copy, " ", &save_ptr); token != NULL ; token = strtok_r(NULL, " ", &save_ptr)){
     parse[i] = token;
 
-    printf("heyhey%s\n", token);
+    //printf("heyhey%s\n", token);
     i += 1;
   }
 
@@ -661,6 +700,19 @@ void argument_stack(void **esp, char *file_name){
   *esp -= 4;
   **(uint32_t **)esp = 0;
 
-
+  //hex_dump(*esp, *esp, 100, 1);
   free(parse);
+  //printf("tlqkffhaemfdk\n");
 }
+
+/*
+struct thread *get_child_process (int pid){ //자식 리스트를 pid로 검색해서 struct thread * 반환
+
+
+}
+
+void remove_child_process(struct thread *cp){ // 
+
+
+}
+*/

@@ -130,7 +130,7 @@ main (void)
   printf ("Boot complete.\n");
   
   /* Run actions specified on kernel command line. */
-  run_actions (argv);
+  run_actions (argv);    // -> 여기서 run_actions -> run_task -> process_wait 을 불러서 첫번쩨 argv 대상으로 process 시작한다.
 
   /* Finish up. */
   shutdown ();

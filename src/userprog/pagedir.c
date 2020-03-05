@@ -38,14 +38,14 @@ pagedir_destroy (uint32_t *pd)
       {
         uint32_t *pt = pde_get_pt (*pde);
         uint32_t *pte;
-        printf("\nhihihihihi\n");
+        //printf("\nhihihihihi\n");
         for (pte = pt; pte < pt + PGSIZE / sizeof *pte; pte++){
           if (*pte & PTE_P) {
-            printf("\nhihihihihi\n");
+            //printf("\nhihihihihi\n");
             palloc_free_page (pte_get_page (*pte));
           }
         }
-        printf("\nhihihihihi\n");
+        //printf("\nhihihihihi\n");
         palloc_free_page (pt);
         //printf("\nhihihihihi\n");
       }

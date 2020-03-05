@@ -198,6 +198,10 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+  t->parent = running_thread();
+  t->is_loaded =false;
+  t->is_power = true;
+
   /* Add to run queue. */
   thread_unblock (t);
 
@@ -466,6 +470,13 @@ init_thread (struct thread *t, const char *name, int priority)
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
+
+  list_init(&t->children);
+  sema_init(&(t->child_lock), 0);
+  sema_init(&(t->mem_lock), 0);
+  sema_init(&(t->load_lock), 0);
+  list_push_back(&(running_thread()->children), &(t->child_elem));
+
   intr_set_level (old_level);
 }
 
