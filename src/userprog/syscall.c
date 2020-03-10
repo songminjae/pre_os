@@ -7,14 +7,25 @@
 #include <devices/shutdown.h>
 #include <threads/thread.h>
 #include <filesys/filesys.h>
+#include <filesys/file.h>
+#include "filesys/file.h"
+#include "filesys/off_t.h"
 
 #include "threads/vaddr.h"
 
 #include "devices/input.h"
 
+
 static void syscall_handler (struct intr_frame *f);
 
 struct lock filesys_lock;
+
+struct file 
+  {
+    struct inode *inode;        /* File's inode. */
+    off_t pos;                  /* Current position. */
+    bool deny_write;            /* Has file_deny_write() been called? */
+  };
 
 void
 syscall_init (void) 
@@ -158,7 +169,7 @@ int open(const char *file){
 	}
 	lock_acquire(&filesys_lock);
 	f = filesys_open(file);
-	lock_release(&filesys_lock);
+	//lock_release(&filesys_lock);
 
 	if (f == NULL){
 		//exit(-1);
@@ -180,7 +191,7 @@ int open(const char *file){
 		}
 		//re = -1;		
 	}
-	//lock_release(&filesys_lock);
+	lock_release(&filesys_lock);
 	//printf("here2: %d\n", re);
 	return re;
 }                                                                                    /////왜 3이 아니라 49가 filesize의 input에 들어가는거지?  => eax에 안넣어줘서 ㅜㅜ
@@ -194,6 +205,7 @@ int filesize(int fd){
 }
 int read(int fd, void *buffer, unsigned size){
 	int i;
+	lock_acquire(&filesys_lock);
 	if (fd == 0){
 		for (i = 0; i < size; i++){
 			*(uint8_t *)(buffer+i) = input_getc();
@@ -204,26 +216,35 @@ int read(int fd, void *buffer, unsigned size){
 	}
 	else{
 		if(thread_current()->fdt[fd] == NULL){
+			lock_release(&filesys_lock);
 			return -1;
 		}
-		lock_acquire(&filesys_lock);
+		//lock_acquire(&filesys_lock);
 		i = file_read(thread_current()->fdt[fd], buffer, size);
-		lock_release(&filesys_lock);
+		//lock_release(&filesys_lock);
 	}
+	lock_release(&filesys_lock);
 	return i;
 }
 int write(int fd, const void *buffer, unsigned size){
+	//lock_acquire(&filesys_lock);
 	if (fd == 1){
+		lock_acquire(&filesys_lock);
 		putbuf(buffer, size);
+		lock_release(&filesys_lock);
 		return size;
 	}
 	else if (fd > 2){
+		lock_acquire(&filesys_lock);
 		if(thread_current()->fdt[fd] == NULL){
+			lock_release(&filesys_lock);
 			return -1;
 		}
 		int i ;
-
-		lock_acquire(&filesys_lock);
+		if(thread_current()->fdt[fd]->deny_write){
+			file_deny_write(thread_current()->fdt[fd]);
+		}
+		//lock_acquire(&filesys_lock);
 		i = file_write(thread_current()->fdt[fd], buffer, size);
 		lock_release(&filesys_lock);
 		return i;
