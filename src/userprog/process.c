@@ -18,6 +18,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#include "userprog/syscall.h"
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
@@ -101,6 +103,9 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
 
+  //printf("sibal\n");  ///*************************************여기까진 잘나옴
+
+
   success = load (d, &if_.eip, &if_.esp);
 /*
   if(success){
@@ -129,14 +134,18 @@ start_process (void *file_name_)
   palloc_free_page (file_name);
 
   if (!success){ 
+    //printf("sibal\n");
 
     //thread_exit ();
     exit(-1);
   }
 
   if(success){
+    //printf("sibal\n");  
     thread_current()->is_loaded = true;
-    argument_stack(&if_.esp, using_file_name3);
+    //printf("sibal\n");
+    argument_stack(&if_.esp, using_file_name3);  /////********************여기서 문제
+    //printf("sibal\n");
   }
   //strlcpy(using_file_name, file_name, strlen(file_name) + 1);       //////////////////////////개새끼 발견!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 /*
@@ -338,6 +347,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
+  lock_acquire(&filesys_lock);
+
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
@@ -345,6 +356,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
+
+  t->run_file = file;
+  file_deny_write(file);
+  lock_release(&filesys_lock);
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -641,7 +656,7 @@ void argument_stack(char **parse, int count, void **esp, char *file_name){ // es
 void argument_stack(void **esp, char *file_name){
   char **parse;
   int count = 0;
-  char file_name_copy[16];
+  char file_name_copy[256];
   char *token, *save_ptr;
   int i = 0;
   int len;
@@ -649,9 +664,11 @@ void argument_stack(void **esp, char *file_name){
 
   strlcpy(file_name_copy, file_name, strlen(file_name) + 1);
   for (token = strtok_r(file_name_copy, " ", &save_ptr); token != NULL ; token = strtok_r(NULL, " ", &save_ptr)){
+    //printf("fuck: %s\n", token);
     count += 1;
   }
 
+  //printf("hey:%d\n", count);
   //parse = (char **)malloc(sizeof(char *) * count);
   parse = malloc(sizeof(char *) * count);
 
@@ -666,7 +683,7 @@ void argument_stack(void **esp, char *file_name){
     //printf("heyhey%s\n", token);
     i += 1;
   }
-
+  //printf("sibal!!22\n");  ///**********************여기서 문제임!!!!
   //argv[][]...
   for (i = count -1; i>-1; i--){
     len = strlen(parse[i]);
@@ -675,7 +692,7 @@ void argument_stack(void **esp, char *file_name){
     strlcpy(*esp, parse[i], len + 1);
     parse[i] = *esp;
   }
-
+  //printf("sibal!!22\n");
   //align
   *esp -= 4 - (total_len % 4);
 
@@ -688,7 +705,7 @@ void argument_stack(void **esp, char *file_name){
     *esp -= 4;
     **(uint32_t **)esp = parse[i];
   }
-
+  //printf("sibal!!\n");
   //argv
   *esp -= 4;
   **(uint32_t **)esp = *esp + 4;

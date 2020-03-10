@@ -108,6 +108,9 @@ struct thread
     struct list children; //자식 리스트
     struct list_elem child_elem; // 자식 리스트 elem
     int exit_status; 
+    struct file *run_file;
+
+    struct file *fdt[128];
 
 #endif
 

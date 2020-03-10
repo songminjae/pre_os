@@ -201,6 +201,7 @@ thread_create (const char *name, int priority,
   t->parent = running_thread();
   t->is_loaded =false;
   t->is_power = true;
+  t->run_file = NULL;
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -476,6 +477,10 @@ init_thread (struct thread *t, const char *name, int priority)
   sema_init(&(t->mem_lock), 0);
   sema_init(&(t->load_lock), 0);
   list_push_back(&(running_thread()->children), &(t->child_elem));
+  int i;
+  for (i = 0; i<128; i++){
+    t->fdt[i] = NULL;
+  }
 
   intr_set_level (old_level);
 }

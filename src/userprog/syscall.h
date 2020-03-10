@@ -4,6 +4,8 @@
 #include "lib/user/syscall.h"
 
 void syscall_init (void);
+struct lock filesys_lock;
+
 void check_address(void *address);
 
 void halt(void);
